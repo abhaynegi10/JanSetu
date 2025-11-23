@@ -1,0 +1,8 @@
+# Ignore huge folders
+node_modules/
+.next/
+dist/
+
+# Ignore Secrets (VERY IMPORTANT)
+.env
+.DS_Store

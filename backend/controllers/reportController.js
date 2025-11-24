@@ -1,36 +1,35 @@
 // backend/controllers/reportController.js
 const pool = require('../config/db');
 
-// --- THE "DUMMY AI" LOGIC ---
+// --- AI LOGIC ---
 const classifyReport = (description) => {
     const desc = description.toLowerCase();
-
-    // Keywords for Government Issues
     if (desc.includes('pothole') || desc.includes('road') || desc.includes('water') || desc.includes('garbage') || desc.includes('street light')) {
         return 'government';
     }
-    
-    // Keywords for Service/Job Opportunities
     if (desc.includes('mechanic') || desc.includes('plumber') || desc.includes('electrician') || desc.includes('cleaner') || desc.includes('repair')) {
         return 'service';
     }
-
-    // If unsure
     return 'pending';
 };
-// ----------------------------
 
+// --- CREATE REPORT (With File) ---
 const createReport = async (req, res) => {
     const { title, description, location, user_id } = req.body;
+    
+    // Check if a file was uploaded
+    let image_url = null;
+    if (req.file) {
+        // Save the full URL path
+        image_url = `/uploads/${req.file.filename}`;
+    }
 
     try {
-        // 1. Run the "AI" classification
         const category = classifyReport(description + ' ' + title);
 
-        // 2. Insert into database WITH the category
         const newReport = await pool.query(
-            'INSERT INTO reports (title, description, location, user_id, category) VALUES ($1, $2, $3, $4, $5) RETURNING *',
-            [title, description, location, user_id, category]
+            'INSERT INTO reports (title, description, location, user_id, category, image_url) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
+            [title, description, location, user_id, category, image_url]
         );
 
         res.status(201).json({
@@ -44,6 +43,7 @@ const createReport = async (req, res) => {
     }
 };
 
+// --- GET ALL REPORTS ---
 const getAllReports = async (req, res) => {
     try {
         const allReports = await pool.query('SELECT * FROM reports ORDER BY created_at DESC');
@@ -54,4 +54,16 @@ const getAllReports = async (req, res) => {
     }
 };
 
-module.exports = { createReport, getAllReports };
+// --- DELETE REPORT (New) ---
+const deleteReport = async (req, res) => {
+    const { id } = req.params;
+    try {
+        await pool.query('DELETE FROM reports WHERE id = $1', [id]);
+        res.json({ message: "Report deleted successfully" });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: "Server Error" });
+    }
+};
+
+module.exports = { createReport, getAllReports, deleteReport };

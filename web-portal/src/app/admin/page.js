@@ -2,7 +2,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation'; // For redirecting
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useTheme } from '@/components/theme-provider';
 
@@ -12,52 +12,76 @@ export default function AdminDashboard() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // --- 1. SECURITY CHECK (The Bouncer) ---
+  // 1. STATE FOR REAL DATA
+  const [reports, setReports] = useState([]);
+
+  // 2. SECURITY CHECK + DATA FETCHING
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
     
     if (!storedUser) {
-      // No user? Go to login
       router.push('/login');
     } else {
       const userData = JSON.parse(storedUser);
       
-      // User exists, but are they an ADMIN?
       if (userData.role !== 'admin') {
         alert("ACCESS DENIED: You are not an Admin.");
-        router.push('/dashboard'); // Kick them to the normal dashboard
+        router.push('/dashboard');
       } else {
         setUser(userData);
+        fetchReports(); // 👈 Fetch real data when admin logs in
         setLoading(false);
       }
     }
   }, [router]);
 
-  // --- MOCK DATA ---
-  const [reports, setReports] = useState([
-    { id: 101, title: "Broken Streetlight", location: "Sector 4", category: "government", status: "pending", date: "2025-10-01" },
-    { id: 102, title: "Leaking Tap", location: "Block A", category: "service", status: "open", date: "2025-10-02" },
-    { id: 103, title: "Garbage Pileup", location: "Market Rd", category: "government", status: "resolved", date: "2025-10-03" },
-    { id: 104, title: "AC Repair", location: "House 22", category: "service", status: "in-progress", date: "2025-10-04" },
-  ]);
+  // 3. FETCH FUNCTION
+  const fetchReports = async () => {
+    try {
+      const res = await fetch('http://localhost:5000/api/reports');
+      const data = await res.json();
+      setReports(data);
+    } catch (err) {
+      console.error("Error fetching reports:", err);
+    }
+  };
 
-  // --- THEME ENGINE (Darker Fonts Applied) ---
+  // 4. REAL DELETE FUNCTION
+  const deleteReport = async (id) => {
+    if(!confirm("Are you sure you want to delete this report? This cannot be undone.")) return;
+
+    try {
+      const res = await fetch(`http://localhost:5000/api/reports/${id}`, {
+        method: 'DELETE',
+      });
+      if (res.ok) {
+        // Update the UI immediately without refreshing
+        setReports(reports.filter(r => r.id !== id));
+        alert("Report Deleted Successfully");
+      } else {
+        alert("Failed to delete");
+      }
+    } catch (err) {
+      alert("Server Error");
+    }
+  };
+
+  // 5. STATS CALCULATION (Dynamic)
+  const totalReports = reports.length;
+  const govtIssues = reports.filter(r => r.category === 'government').length;
+  const serviceJobs = reports.filter(r => r.category === 'service').length;
+  // Note: We don't have a 'status' column in DB yet, so we assume all are 'open' for now
+  const openIssues = reports.length; 
+
   const theme = {
     bg: darkMode ? 'bg-slate-950' : 'bg-gray-100',
     text: darkMode ? 'text-gray-100' : 'text-gray-900',
     card: darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-gray-200',
     navBg: darkMode ? 'bg-slate-950/90 border-slate-800' : 'bg-white/90 border-gray-200',
-    tableHeader: darkMode ? 'bg-slate-800 text-gray-300' : 'bg-gray-200 text-gray-800', // Darker text
+    tableHeader: darkMode ? 'bg-slate-800 text-gray-300' : 'bg-gray-200 text-gray-800',
     tableRow: darkMode ? 'border-slate-800 hover:bg-slate-800/50' : 'border-gray-200 hover:bg-gray-100',
   };
 
-  const deleteReport = (id) => {
-    if(confirm("Are you sure you want to delete this report?")) {
-      setReports(reports.filter(r => r.id !== id));
-    }
-  };
-
-  // Wait for security check
   if (loading) return <div className="min-h-screen flex items-center justify-center font-bold text-xl">Verifying Admin Access...</div>;
 
   return (
@@ -86,13 +110,13 @@ export default function AdminDashboard() {
 
       <main className="max-w-7xl mx-auto p-8">
         
-        {/* STATS CARDS */}
+        {/* STATS CARDS (Dynamic Numbers) */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-10">
           {[
-            { label: "Total Reports", val: reports.length, color: "text-blue-600" },
-            { label: "Govt Issues", val: reports.filter(r => r.category === 'government').length, color: "text-orange-600" },
-            { label: "Service Jobs", val: reports.filter(r => r.category === 'service').length, color: "text-green-600" },
-            { label: "Resolved", val: reports.filter(r => r.status === 'resolved').length, color: "text-purple-600" },
+            { label: "Total Reports", val: totalReports, color: "text-blue-600" },
+            { label: "Govt Issues", val: govtIssues, color: "text-orange-600" },
+            { label: "Service Jobs", val: serviceJobs, color: "text-green-600" },
+            { label: "Active Issues", val: openIssues, color: "text-purple-600" },
           ].map((stat, idx) => (
             <div key={idx} className={`p-6 rounded-2xl border shadow-md ${theme.card}`}>
               <div className={`text-sm font-bold mb-1 opacity-80`}>{stat.label}</div>
@@ -101,7 +125,7 @@ export default function AdminDashboard() {
           ))}
         </div>
 
-        {/* DATA TABLE */}
+        {/* DATA TABLE (Real Data) */}
         <div className={`rounded-2xl border shadow-xl overflow-hidden ${theme.card}`}>
           <div className={`p-6 border-b flex justify-between items-center ${darkMode ? 'border-slate-800' : 'border-gray-200'}`}>
             <h2 className="text-xl font-bold">Master Report List</h2>
@@ -118,30 +142,35 @@ export default function AdminDashboard() {
                   <th className="p-4">Title</th>
                   <th className="p-4">Location</th>
                   <th className="p-4">Category</th>
-                  <th className="p-4">Status</th>
-                  <th className="p-4">Date</th>
+                  <th className="p-4">Image</th>
                   <th className="p-4 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody>
+                {reports.length === 0 && (
+                   <tr><td colSpan="6" className="p-8 text-center opacity-50">No reports found in database.</td></tr>
+                )}
                 {reports.map((report) => (
                   <tr key={report.id} className={`border-b transition font-medium ${theme.tableRow}`}>
                     <td className="p-4 font-mono text-sm opacity-70">#{report.id}</td>
                     <td className="p-4 text-base">{report.title}</td>
                     <td className="p-4 text-sm opacity-90">{report.location}</td>
+                    
                     <td className="p-4">
                       <span className={`px-2 py-1 rounded text-xs font-extrabold uppercase ${report.category === 'government' ? 'bg-orange-100 text-orange-800' : 'bg-green-100 text-green-800'}`}>
                         {report.category}
                       </span>
                     </td>
+
                     <td className="p-4">
-                      <span className={`px-2 py-1 rounded-full text-xs font-extrabold capitalize border ${report.status === 'resolved' ? 'bg-gray-100 text-gray-700 border-gray-300' : report.status === 'open' ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-yellow-50 text-yellow-700 border-yellow-200'}`}>
-                        {report.status}
-                      </span>
+                        {report.image_url ? (
+                            <a href={`http://localhost:5000${report.image_url}`} target="_blank" className="text-blue-500 hover:underline text-xs">View Image</a>
+                        ) : (
+                            <span className="text-xs opacity-50">No Image</span>
+                        )}
                     </td>
-                    <td className="p-4 text-sm opacity-80">{report.date}</td>
+
                     <td className="p-4 text-right space-x-3">
-                      <button className="text-blue-600 hover:text-blue-800 text-sm font-bold hover:underline">Edit</button>
                       <button onClick={() => deleteReport(report.id)} className="text-red-600 hover:text-red-800 text-sm font-bold hover:underline">Delete</button>
                     </td>
                   </tr>
